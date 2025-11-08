@@ -129,21 +129,21 @@ def extract_meta(txt):
     }
 
 def extract_tabel_auto(txt):
+    res = []
+    # Kasus faktur dengan kode barang
     if re.search(r"\n\s*\d+\s+\d{6}\s+", txt):
         pat = re.compile(
             r"(\d+)\s+(\d{6})\s+([\s\S]*?)\n\s*([\d.,]+)\s*(?=\n\d+\s+\d{6}|\nHarga Jual|$)", re.M
         )
-        res = []
         for m in pat.finditer(txt):
+            gabung = f"{m.group(2)} - {' '.join(m.group(3).split())}"
             res.append({
                 "No": m.group(1),
-                "Kode Barang/Jasa": m.group(2),
-                "Nama Barang Kena Pajak / Jasa Kena Pajak": " ".join(m.group(3).split()),
+                "Barang / Jasa Kena Pajak": gabung,
                 "Harga Jual / Penggantian / Uang Muka / Termin (Rp)": float(m.group(4).replace(".","").replace(",","."))
             })
-        return res
+    # Kasus faktur tanpa kode barang
     else:
-        res = []
         blocks = re.split(r'\n(?=\d+\s*\n)', txt)
         for blk in blocks:
             blk = blk.strip()
@@ -155,12 +155,13 @@ def extract_tabel_auto(txt):
             harga = float(harga_match[-1].replace(".","").replace(",","."))
             deskripsi = re.sub(r'\b[\d.,]+\b\s*$', '', content).strip()
             if len(deskripsi) > 5 and harga > 0:
+                gabung = f"- - {deskripsi}"
                 res.append({
-                    "No": no, "Kode Barang/Jasa": "-",
-                    "Nama Barang Kena Pajak / Jasa Kena Pajak": deskripsi,
+                    "No": no,
+                    "Barang / Jasa Kena Pajak": gabung,
                     "Harga Jual / Penggantian / Uang Muka / Termin (Rp)": harga
                 })
-        return res
+    return res
 
 # =====================================================
 # STEP 1 — UPLOAD & BACA FILE
@@ -179,12 +180,12 @@ if upl and st.button("📖🐱 Baca File", type="primary", key="baca"):
         items = extract_tabel_auto(txt)
         if not items:
             items = [{
-                "No": "-", "Kode Barang/Jasa": "-",
-                "Nama Barang Kena Pajak / Jasa Kena Pajak": "Tidak terbaca",
+                "No": "-", "Barang / Jasa Kena Pajak": "Tidak terbaca",
                 "Harga Jual / Penggantian / Uang Muka / Termin (Rp)": 0.0
             }]
         for it in items:
-            rows.append({**it, **meta})
+            row = {**it, **meta}
+            rows.append(row)
     df = pd.DataFrame(rows)
     st.session_state.data_faktur = df
     st.session_state.step = "cek"

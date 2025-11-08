@@ -5,7 +5,7 @@ import re
 from io import BytesIO
 from streamlit_sortables import sort_items
 
-st.set_page_config(page_title="Extractor Faktur Pajak 🐱", layout="wide")
+st.set_page_config(page_title="Rekap Faktur Pajak 🐱", layout="wide")
 
 # ====== CSS CUSTOM BUTTONS ======
 st.markdown("""
@@ -36,10 +36,10 @@ for k, v in {"step": None, "data_faktur": None, "ordered_cols": None}.items():
 # =====================================================
 # HEADER & DESKRIPSI
 # =====================================================
-st.title("🐾 Extractor isi Faktur Pajak Coretax ke Excel")
+st.title("🐾 Rekap Faktur Pajak Coretax ke Excel")
 st.markdown("""
 ### 📘 Deskripsi Aplikasi
-Aplikasi ini digunakan untuk **mengekstrak isi Faktur Pajak (PDF)** menjadi **file Excel otomatis**.  
+Aplikasi ini digunakan untuk **Rekap Faktur Pajak (PDF)** menjadi **file Excel otomatis**.  
 Hasilnya berupa **satu baris per faktur**, berisi metadata dan daftar gabungan seluruh barang/jasa.
 
 Menampilkan:

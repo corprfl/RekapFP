@@ -40,28 +40,27 @@ st.title("🐾 Extractor isi Faktur Pajak Coretax ke Excel")
 st.markdown("""
 ### 📘 Deskripsi Aplikasi
 Aplikasi ini digunakan untuk **mengekstrak isi Faktur Pajak (PDF)** menjadi **file Excel otomatis**.  
-Cocok untuk rekap data faktur pajak Coretax dengan format kolom detail.
+Hasilnya berupa **satu baris per faktur**, berisi metadata dan daftar gabungan seluruh barang/jasa.
 
-Menampilkan informasi:
+Menampilkan:
 - 📄 Metadata faktur: Nomor, Tanggal, Nama PKP, NPWP, Pembeli, dsb  
-- 💬 Detail barang/jasa: Deskripsi, kode, dan harga  
-- 💰 Nilai transaksi: DPP, PPN, PPnBM, potongan, uang muka, total akhir  
+- 💬 Detail barang/jasa: digabung dalam satu kolom teks  
+- 💰 Nilai total transaksi: DPP, PPN, PPnBM, potongan, uang muka, total akhir  
 
 ---
 
 ### 🧩 Panduan Penggunaan
-1️⃣ **Upload Faktur Pajak (PDF)** – pilih satu atau beberapa file  
+1️⃣ Upload 1 atau beberapa file Faktur Pajak (PDF)  
 2️⃣ Klik **📖🐱 Baca File** untuk ekstraksi otomatis  
-3️⃣ Jika hasil sesuai, klik **✅🐱 Data Sesuai**  
-4️⃣ Urutkan kolom (drag & drop) lalu klik **✅🐱 Tetapkan Urutan Kolom**  
-5️⃣ Lihat **Preview** dan tekan **📥🐱 Konversi & Download Excel**
+3️⃣ Cek hasil → klik **✅🐱 Data Sesuai**  
+4️⃣ Urutkan kolom (drag & drop) bila perlu  
+5️⃣ Klik **📥🐱 Konversi & Download Excel**
 
 ---
 
 ### ⚠️ Disclaimer
-Semua proses dilakukan **langsung di perangkat Anda (client-side)**.  
-Tidak ada file yang dikirim, disimpan, atau diproses di server mana pun.  
-**Kerahasiaan dan keamanan data pajak Anda sepenuhnya terjamin.**
+Proses dijalankan **langsung di perangkat Anda (client-side)** — tidak ada data dikirim ke server.  
+**Kerahasiaan data pajak Anda aman sepenuhnya.**
 
 ---
 
@@ -128,40 +127,27 @@ def extract_meta(txt):
         "Nomor Referensi": extract(r"Nomor\s*Referensi\s*[:\-]?\s*([A-Za-z0-9\-\/]+)", txt)
     }
 
-def extract_tabel_auto(txt):
-    res = []
-    # Kasus faktur dengan kode barang
+def extract_barang_jasa(txt):
+    """Ambil semua deskripsi barang + kode lalu gabung jadi satu string"""
+    items = []
     if re.search(r"\n\s*\d+\s+\d{6}\s+", txt):
         pat = re.compile(
-            r"(\d+)\s+(\d{6})\s+([\s\S]*?)\n\s*([\d.,]+)\s*(?=\n\d+\s+\d{6}|\nHarga Jual|$)", re.M
+            r"\n\s*(\d+)\s+(\d{6})\s+([\s\S]*?)(?=\n\s*\d+\s+\d{6}|\nHarga Jual|$)", re.M
         )
         for m in pat.finditer(txt):
-            gabung = f"{m.group(2)} - {' '.join(m.group(3).split())}"
-            res.append({
-                "No": m.group(1),
-                "Barang / Jasa Kena Pajak": gabung,
-                "Harga Jual / Penggantian / Uang Muka / Termin (Rp)": float(m.group(4).replace(".","").replace(",","."))
-            })
-    # Kasus faktur tanpa kode barang
+            kode = m.group(2).strip()
+            nama = " ".join(m.group(3).split())
+            items.append(f"{kode} - {nama}")
     else:
         blocks = re.split(r'\n(?=\d+\s*\n)', txt)
         for blk in blocks:
             blk = blk.strip()
             m = re.match(r"(\d+)\s+(.*)", blk, re.DOTALL)
             if not m: continue
-            no, content = m.group(1), m.group(2).strip()
-            harga_match = re.findall(r'\b([\d.,]+)\b\s*$', content)
-            if not harga_match: continue
-            harga = float(harga_match[-1].replace(".","").replace(",","."))
-            deskripsi = re.sub(r'\b[\d.,]+\b\s*$', '', content).strip()
-            if len(deskripsi) > 5 and harga > 0:
-                gabung = f"- - {deskripsi}"
-                res.append({
-                    "No": no,
-                    "Barang / Jasa Kena Pajak": gabung,
-                    "Harga Jual / Penggantian / Uang Muka / Termin (Rp)": harga
-                })
-    return res
+            nama = " ".join(m.group(2).split())
+            if len(nama) > 5:
+                items.append(f"- - {nama}")
+    return "; ".join(items) if items else "-"
 
 # =====================================================
 # STEP 1 — UPLOAD & BACA FILE
@@ -174,22 +160,16 @@ if upl and st.button("📖🐱 Baca File", type="primary", key="baca"):
         meta = extract_meta(txt)
         meta.update(extract_total(txt))
         meta["Nama Asli File"] = f.name
+        meta["Barang / Jasa Kena Pajak"] = extract_barang_jasa(txt)
         tgl = meta["Tanggal Faktur Pajak"].split("/")
         meta["Masa"] = tgl[1] if len(tgl) > 1 else "-"
         meta["Tahun"] = tgl[2] if len(tgl) > 2 else "-"
-        items = extract_tabel_auto(txt)
-        if not items:
-            items = [{
-                "No": "-", "Barang / Jasa Kena Pajak": "Tidak terbaca",
-                "Harga Jual / Penggantian / Uang Muka / Termin (Rp)": 0.0
-            }]
-        for it in items:
-            row = {**it, **meta}
-            rows.append(row)
+        rows.append(meta)
     df = pd.DataFrame(rows)
+    df.insert(0, "No", range(1, len(df)+1))
     st.session_state.data_faktur = df
     st.session_state.step = "cek"
-    st.success(f"✅ {len(df)} baris berhasil dibaca.")
+    st.success(f"✅ {len(df)} faktur berhasil dibaca.")
     st.dataframe(df)
 
 # =====================================================

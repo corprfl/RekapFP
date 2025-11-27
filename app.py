@@ -107,10 +107,16 @@ def extract_total(txt):
             val(r"Dikurangi\s+Potongan\s+Harga\s*([\d.,]*)"),
         "Dikurangi Uang Muka yang telah diterima (Total)":
             val(r"Dikurangi\s+Uang\s+Muka\s+yang\s+telah\s+diterima\s*([\d.,]*)"),
-        "Dasar Pengenaan Pajak (Total)": val(r"Dasar\s+Pengenaan\s+Pajak\s*([\d.,]+)"),
+        "Dasar Pengenaan Pajak (Total)":
+            val(r"Dasar\s+Pengenaan\s+Pajak\s*([\d.,]+)"),
         "PPN (Total)": val(r"Jumlah\s*PPN.*?([\d.,]+)"),
         "Jumlah PPnBM (Total)": val(r"Jumlah\s*PPnBM.*?([\d.,]+)")
     }
+
+# 🔥 FIX BARU — Ekstraksi Referensi PDF Coretax
+def extract_referensi(txt):
+    m = re.search(r"\(Referensi:\s*(.*?)\)", txt, re.IGNORECASE)
+    return m.group(1).strip() if m else "-"
 
 def extract_meta(txt):
     return {
@@ -124,11 +130,12 @@ def extract_meta(txt):
         "Tanggal Faktur Pajak": extract_tanggal(txt),
         "Penandatangan": extract(r"Ditandatangani secara elektronik\n(.*?)\n", txt),
         "Keterangan Tambahan": extract(r"Keterangan\s*:\s*(.*)", txt),
-        "Nomor Referensi": extract(r"Nomor\s*Referensi\s*[:\-]?\s*([A-Za-z0-9\-\/]+)", txt)
+
+        # 🔥 FIX NEW — ambil dari "(Referensi: ... )"
+        "Nomor Referensi": extract_referensi(txt)
     }
 
 def extract_barang_jasa(txt):
-    """Ambil semua deskripsi barang + kode lalu gabung jadi satu string"""
     items = []
     if re.search(r"\n\s*\d+\s+\d{6}\s+", txt):
         pat = re.compile(
@@ -157,18 +164,25 @@ if upl and st.button("📖🐱 Baca File", type="primary", key="baca"):
     rows = []
     for f in upl:
         txt = "".join([p.get_text() for p in fitz.open(stream=f.read(), filetype="pdf")])
+
         meta = extract_meta(txt)
         meta.update(extract_total(txt))
+
         meta["Nama Asli File"] = f.name
         meta["Barang / Jasa Kena Pajak"] = extract_barang_jasa(txt)
+
         tgl = meta["Tanggal Faktur Pajak"].split("/")
         meta["Masa"] = tgl[1] if len(tgl) > 1 else "-"
         meta["Tahun"] = tgl[2] if len(tgl) > 2 else "-"
+
         rows.append(meta)
+
     df = pd.DataFrame(rows)
     df.insert(0, "No", range(1, len(df)+1))
+
     st.session_state.data_faktur = df
     st.session_state.step = "cek"
+
     st.success(f"✅ {len(df)} faktur berhasil dibaca.")
     st.dataframe(df)
 
@@ -187,9 +201,12 @@ if st.session_state.step == "cek" and st.session_state.data_faktur is not None:
 if st.session_state.step in ["urut", "preview"] and st.session_state.data_faktur is not None:
     st.markdown("### ↕️ Urutkan Kolom (Drag & Drop)")
     df = st.session_state.data_faktur
+
     cols = list(df.columns)
     ordered = sort_items(cols, direction="horizontal", multi_containers=False, key="sortcols")
+
     st.session_state.ordered_cols = ordered
+
     st.markdown('<div id="urutan-kolom">', unsafe_allow_html=True)
     if st.button("✅🐱 Tetapkan Urutan Kolom"):
         if ordered:
@@ -202,11 +219,19 @@ if st.session_state.step in ["urut", "preview"] and st.session_state.data_faktur
 if st.session_state.step == "preview" and st.session_state.ordered_cols:
     df = st.session_state.data_faktur
     cols = st.session_state.ordered_cols
+
     df_filtered = df[cols]
+
     st.markdown("### 🔍 Preview (5 Baris Pertama)")
     st.dataframe(df_filtered.head(5))
+
     buf = BytesIO()
     df_filtered.to_excel(buf, index=False, engine="openpyxl", float_format="%.0f")
     buf.seek(0)
-    st.download_button("📥🐱 Konversi & Download Excel", buf, "rekap_faktur_coretax.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    st.download_button(
+        "📥🐱 Konversi & Download Excel",
+        buf,
+        "rekap_faktur_coretax.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
